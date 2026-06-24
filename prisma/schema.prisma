@@ -21,17 +21,17 @@ model Player {
 }
 
 model Match {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   homePlayerId String
   awayPlayerId String
   homeGoals    Int?
   awayGoals    Int?
   playedAt     DateTime?
-  leg          String   // "home" | "away" relative to the first leg pairing
-  status       String   @default("scheduled") // "scheduled" | "completed"
+  leg          String // "home" | "away" relative to the first leg pairing
+  status       String    @default("scheduled") // "scheduled" | "completed"
 
-homePlayer Player @relation("HomePlayer", fields: [homePlayerId], references: [id], onDelete: Cascade)
-   awayPlayer Player @relation("AwayPlayer", fields: [awayPlayerId], references: [id], onDelete: Cascade)
+  homePlayer Player @relation("HomePlayer", fields: [homePlayerId], references: [id], onDelete: Cascade)
+  awayPlayer Player @relation("AwayPlayer", fields: [awayPlayerId], references: [id], onDelete: Cascade)
 
   // Ensure exactly one fixture per (home,away) pairing
   @@unique([homePlayerId, awayPlayerId])

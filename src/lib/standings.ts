@@ -109,5 +109,5 @@ export function computeStandings(
 }
 
 export function fixturesTotal(n: number): number {
-  return n * (n - 1);
+  return n <= 1 ? 0 : n * (n - 1);
 }

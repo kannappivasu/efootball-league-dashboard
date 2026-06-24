@@ -27,6 +27,15 @@ ADMIN_PASSWORD=admin123
 
 Change the password by editing `.env` and re-running `npm run db:seed` (the seed *upserts* the admin, updating the password hash).
 
+The seed is safe to run again: it fills in missing players/fixtures without deleting existing scores.
+
+### Quality checks
+
+```bash
+npm run check   # ESLint + TypeScript + unit tests
+npm run build   # production build
+```
+
 ---
 
 ## How to add an admin
@@ -103,12 +112,14 @@ src/lib/session.ts             iron-session + requireAdmin() guard
 src/lib/standings.ts           Pure standings computation (MP/W/D/L/GF/GA/GD/Pts + form)
 src/lib/fixtures.ts            Double round-robin fixture generator (idempotent on add)
 src/lib/avatar.ts              Initials crest SVG fallback
+src/lib/validation.ts          Shared player/avatar input validation
 src/app/page.tsx               Public dashboard (server entry)
 src/components/Dashboard.tsx   Live-polling standings + fixtures (client)
 src/app/admin/login/page.tsx   Admin login
 src/app/admin/page.tsx         Server-side auth gate
 src/components/AdminPanel.tsx   Players, scores, audit tabs
 src/app/api/*                  data, auth, session, players, matches, audit routes
+tests/*                        Standings, fixture generation, and validation tests
 ```
 
 ---
@@ -134,3 +145,6 @@ Sort order: **Pts → GD → GF → name (alphabetical)**. Top 4 rows are highli
 - **Score validation**: server rejects non-integer or negative scores.
 - **Adding a player** auto-creates home+away legs against every existing player; **deleting a player** cascades to delete all their matches.
 - **Audit log**: every player/match/auth change is recorded with actor, action, detail, and timestamp.
+- **Safe reseeding**: `npm run db:seed` never wipes completed results; it only adds missing fixtures.
+- **Production session safety**: the app refuses to start authenticated routes in production without a strong `SESSION_SECRET`.
+- **Large leagues**: public fixtures are collapsed by default and admin match editing is paginated.

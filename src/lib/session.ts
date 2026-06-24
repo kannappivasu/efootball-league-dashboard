@@ -12,7 +12,12 @@ const DEFAULT_SECRET =
   "dev-insecure-secret-please-change-in-production-xxxxxxxxxxxxxxxx";
 
 function sessionOptions(): SessionOptions {
-  const password = process.env.SESSION_SECRET || DEFAULT_SECRET;
+  const configuredSecret = process.env.SESSION_SECRET?.trim();
+  if (process.env.NODE_ENV === "production" && (!configuredSecret || configuredSecret.length < 32)) {
+    throw new Error("SESSION_SECRET must be set to at least 32 characters in production");
+  }
+
+  const password = configuredSecret || DEFAULT_SECRET;
   return {
     password: password.length >= 32 ? password : password.padEnd(32, "x"),
     cookieName: "efl_session",
@@ -27,13 +32,6 @@ function sessionOptions(): SessionOptions {
 }
 
 export async function getSession() {
-  const cookieStore = await cookies();
-  return getIronSession<SessionData>(cookieStore, sessionOptions());
-}
-
-/** For use in Route Handlers (Request cookies). */
-export async function getSessionFromReq() {
-  const { cookies } = await import("next/headers");
   const cookieStore = await cookies();
   return getIronSession<SessionData>(cookieStore, sessionOptions());
 }
