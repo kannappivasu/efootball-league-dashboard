@@ -87,7 +87,7 @@ All writes go through server-side API routes that verify the admin session — t
    - `SESSION_SECRET` — a long random string (≥ 32 chars). Generate one with `openssl rand -hex 32`.
    - `ADMIN_EMAIL` — default super-admin email (used only by the seed).
    - `ADMIN_PASSWORD` — default super-admin password (used only by the seed).
-   - `DATABASE_URL` — **optional**. By default the app uses a local SQLite file (`file:./dev.db`), which works for quick demos but is **ephemeral on Vercel** (reset on every deploy). For a persistent league use a real database:
+   - `DATABASE_URL` — **optional**. By default the app uses a local SQLite file (`file:./data/league.sqlite`), which works for quick demos but is **ephemeral on Vercel** (reset on every deploy). For a persistent league use a real database:
      - Easiest free option: create a PostgreSQL DB on [Neon](https://neon.tech) or [Supabase](https://supabase.com) and set `DATABASE_URL` to the connection string, then change the provider in `prisma/schema.prisma` from `sqlite` to `postgresql`, run `npm run db:push` once locally (or via `vercel env pull` + a build script), and Vercel will use it.
 4. After the first deploy, run the seed once so the DB has an admin and fixtures:
    ```bash
@@ -97,7 +97,7 @@ All writes go through server-side API routes that verify the admin session — t
    ```
    …or use `npx prisma studio` against your remote DB to add the admin/fixtures manually.
 
-> SQLite note: Vercel's serverless functions have an ephemeral filesystem. The bundled `dev.db` resets on each cold start, so use Postgres for any league you care about. The app will still *run* on SQLite on Vercel for testing/throwaway demos.
+> SQLite note: Vercel's serverless functions have an ephemeral filesystem. The bundled `data/league.sqlite` resets on each cold start, so use Postgres for any league you care about. The app will still *run* on SQLite on Vercel for testing/throwaway demos.
 
 ---
 
