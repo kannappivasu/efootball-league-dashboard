@@ -114,7 +114,15 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-7">
+      <p
+        aria-hidden="true"
+        className="select-none text-center text-[4px] leading-none tracking-[0.08em] text-slate-950/30"
+      >
+        sam is a little vanam
+      </p>
       <section className="hero-card">
+        <span className="hero-orb hero-orb-one" />
+        <span className="hero-orb hero-orb-two" />
         <div className="relative grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_260px] lg:items-center">
           <div>
             <span className="eyebrow">
@@ -122,11 +130,16 @@ export default function Dashboard() {
               Live league
             </span>
             <h1 className="mt-5 max-w-2xl text-3xl font-black leading-tight tracking-tight sm:text-5xl">
-              The table, without the <span className="text-pitch-400">group-chat math.</span>
+              Every match. Every point. <span className="text-gradient">One league.</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">
               Standings, form and every fixture in one place. Results refresh automatically as the league unfolds.
             </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {["Live standings", "Recent form", "Full fixtures"].map((label) => (
+                <span key={label} className="feature-pill">{label}</span>
+              ))}
+            </div>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-slate-400">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1.5">
                 <span className="h-2 w-2 rounded-full bg-pitch-400" />
