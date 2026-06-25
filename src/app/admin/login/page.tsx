@@ -20,9 +20,13 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const json = await res.json();
+      const contentType = res.headers.get("content-type") ?? "";
+      const json = contentType.includes("application/json")
+        ? await res.json().catch(() => ({}))
+        : {};
       if (!res.ok) throw new Error(json.error ?? "Login failed");
       router.replace("/admin");
+      router.refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {

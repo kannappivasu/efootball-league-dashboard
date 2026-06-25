@@ -24,7 +24,13 @@ export async function POST(req: Request) {
   session.isLoggedIn = true;
   await session.save();
 
-  await prisma.auditLog.create({ data: { actor: admin.email, action: "login", detail: "Admin logged in" } });
+  // Authentication must not fail if optional audit storage is temporarily
+  // unavailable (for example, a read-only bundled SQLite database).
+  try {
+    await prisma.auditLog.create({ data: { actor: admin.email, action: "login", detail: "Admin logged in" } });
+  } catch (error) {
+    console.error("Failed to write login audit log", error);
+  }
   return NextResponse.json(
     { ok: true, email: admin.email, role: admin.role },
     { headers: { "Cache-Control": "no-store" } }
