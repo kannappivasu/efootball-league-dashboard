@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initialsAvatar } from "@/lib/avatar";
 import type { StandingsRow } from "@/lib/standings";
 
@@ -29,6 +29,7 @@ type DataShape = {
 };
 
 const POLL_MS = 8000;
+const PLAYER_FILTER_KEY = "efootball-player-filter";
 
 export default function Dashboard() {
   const [data, setData] = useState<DataShape | null>(null);
@@ -37,6 +38,8 @@ export default function Dashboard() {
   const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [fixturePlayerId, setFixturePlayerId] = useState("");
+  const [filterHydrated, setFilterHydrated] = useState(false);
   const previousStandingsRef = useRef(new Map<string, string>());
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchingRef = useRef(false);
@@ -77,6 +80,29 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    const savedPlayerId = window.localStorage.getItem(PLAYER_FILTER_KEY);
+    if (savedPlayerId) setFixturePlayerId(savedPlayerId);
+    setFilterHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!data) return;
+    if (fixturePlayerId && !data.players.some((player) => player.id === fixturePlayerId)) {
+      setFixturePlayerId("");
+      window.localStorage.removeItem(PLAYER_FILTER_KEY);
+    }
+  }, [data, fixturePlayerId]);
+
+  useEffect(() => {
+    if (!filterHydrated) return;
+    if (fixturePlayerId) {
+      window.localStorage.setItem(PLAYER_FILTER_KEY, fixturePlayerId);
+    } else {
+      window.localStorage.removeItem(PLAYER_FILTER_KEY);
+    }
+  }, [filterHydrated, fixturePlayerId]);
+
+  useEffect(() => {
     void fetchData();
     const pollInterval = setInterval(() => void fetchData(true), POLL_MS);
     const clockInterval = setInterval(() => setNow(Date.now()), 1000);
@@ -109,8 +135,13 @@ export default function Dashboard() {
   const goals = completed.reduce((sum, match) => sum + (match.homeGoals ?? 0) + (match.awayGoals ?? 0), 0);
   const completion = total ? Math.round((played / total) * 100) : 0;
   const leader = data.standings[0];
-  const topScorer = played ? [...data.standings].sort((a, b) => b.gf - a.gf || b.pts - a.pts)[0] : undefined;
+  const bestAttack = played ? [...data.standings].sort((a, b) => b.gf - a.gf || b.pts - a.pts)[0] : undefined;
   const bestGd = played ? [...data.standings].sort((a, b) => b.gd - a.gd || b.pts - a.pts)[0] : undefined;
+  const bestDefense = played
+    ? [...data.standings]
+        .filter((row) => row.mp > 0)
+        .sort((a, b) => a.ga - b.ga || b.mp - a.mp || b.pts - a.pts)[0]
+    : undefined;
 
   return (
     <div className="space-y-7">
@@ -176,11 +207,26 @@ export default function Dashboard() {
         leader={leader}
       />
 
-      <Highlights topScorer={topScorer} bestGd={bestGd} />
+      <Highlights bestAttack={bestAttack} bestGd={bestGd} bestDefense={bestDefense} />
 
-      <StandingsTable rows={data.standings} flashIds={flashIds} />
+      <StandingsTable
+        rows={data.standings}
+        flashIds={flashIds}
+        onSelectPlayer={(playerId) => {
+          setFixturePlayerId(playerId);
+          window.requestAnimationFrame(() => {
+            document.getElementById("match-centre")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        }}
+      />
 
-      <FixturesSection completed={completed} upcoming={upcoming} />
+      <FixturesSection
+        completed={completed}
+        upcoming={upcoming}
+        players={data.players}
+        selectedPlayerId={fixturePlayerId}
+        onSelectedPlayerChange={setFixturePlayerId}
+      />
     </div>
   );
 }
@@ -203,7 +249,7 @@ function OverviewStats({
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {stats.map((stat) => (
         <div key={stat.label} className="stat-card">
           <span className="absolute right-3 top-3 h-8 w-8 rounded-full bg-pitch-500/10 blur-xl" />
@@ -230,17 +276,25 @@ function OverviewStats({
   );
 }
 
-function Highlights({ topScorer, bestGd }: { topScorer?: StandingsRow; bestGd?: StandingsRow }) {
-  if (!topScorer && !bestGd) return null;
+function Highlights({
+  bestAttack,
+  bestGd,
+  bestDefense,
+}: {
+  bestAttack?: StandingsRow;
+  bestGd?: StandingsRow;
+  bestDefense?: StandingsRow;
+}) {
+  if (!bestAttack && !bestGd && !bestDefense) return null;
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-3">
       <div className="card flex items-center gap-4 p-4">
-        <div className="grid h-11 w-11 place-items-center rounded-xl bg-amber-400/10 text-xl text-amber-300">★</div>
+        <div className="grid h-11 w-11 place-items-center rounded-xl bg-amber-400/10 text-xl text-amber-300">⚽</div>
         <div className="min-w-0 flex-1">
-        <p className="text-xs uppercase tracking-wider text-slate-400">Top Scorer</p>
+        <p className="text-xs uppercase tracking-wider text-slate-400">Best Attack</p>
         <p className="mt-1 flex items-center gap-2 font-bold">
-          <span className="truncate">{topScorer?.name ?? "—"}</span>
-          <span className="ml-auto text-xl text-pitch-400">{topScorer?.gf ?? 0}</span>
+          <span className="truncate">{bestAttack?.name ?? "—"}</span>
+          <span className="ml-auto text-xl text-pitch-400">{bestAttack?.gf ?? 0}</span>
         </p>
         </div>
       </div>
@@ -254,11 +308,29 @@ function Highlights({ topScorer, bestGd }: { topScorer?: StandingsRow; bestGd?: 
         </p>
         </div>
       </div>
+      <div className="card flex items-center gap-4 p-4">
+        <div className="grid h-11 w-11 place-items-center rounded-xl bg-sky-400/10 text-xl text-sky-300">◆</div>
+        <div className="min-w-0 flex-1">
+        <p className="text-xs uppercase tracking-wider text-slate-400">Best Defense</p>
+        <p className="mt-1 flex items-center gap-2 font-bold">
+          <span className="truncate">{bestDefense?.name ?? "—"}</span>
+          <span className="ml-auto text-xl text-sky-300">{bestDefense?.ga ?? 0}</span>
+        </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-function StandingsTable({ rows, flashIds }: { rows: StandingsRow[]; flashIds: Set<string> }) {
+function StandingsTable({
+  rows,
+  flashIds,
+  onSelectPlayer,
+}: {
+  rows: StandingsRow[];
+  flashIds: Set<string>;
+  onSelectPlayer: (playerId: string) => void;
+}) {
   const CUTOFF = 4;
   return (
     <div className="card overflow-hidden">
@@ -267,25 +339,28 @@ function StandingsTable({ rows, flashIds }: { rows: StandingsRow[]; flashIds: Se
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-pitch-400">Competition</p>
           <h2 className="mt-0.5 text-lg font-extrabold">League table</h2>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-slate-500">
-          <span className="h-2 w-2 rounded-full bg-pitch-500" />
-          Top four
+        <div className="text-right text-[11px] text-slate-500">
+          <p>Tap a player to view their matches</p>
+          <p className="mt-1 inline-flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-pitch-500" />
+            Top four
+          </p>
         </div>
       </div>
       <div className="max-h-[70vh] overflow-auto">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full table-fixed text-sm sm:min-w-[720px] sm:table-auto">
           <thead className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur text-slate-300">
             <tr className="text-xs uppercase tracking-wide">
-              <th className="px-3 py-3 text-left">#</th>
+              <th className="w-11 px-2 py-3 text-left sm:w-auto sm:px-3">#</th>
               <th className="px-3 py-3 text-left">Player</th>
-              <th className="px-2 py-3 text-center">MP</th>
-              <th className="px-2 py-3 text-center">W</th>
-              <th className="px-2 py-3 text-center">D</th>
-              <th className="px-2 py-3 text-center">L</th>
-              <th className="px-2 py-3 text-center">GF</th>
-              <th className="px-2 py-3 text-center">GA</th>
-              <th className="px-2 py-3 text-center">GD</th>
-              <th className="px-2 py-3 text-center text-pitch-400">Pts</th>
+              <th className="w-11 px-1 py-3 text-center sm:w-auto sm:px-2">MP</th>
+              <th className="hidden px-2 py-3 text-center sm:table-cell">W</th>
+              <th className="hidden px-2 py-3 text-center sm:table-cell">D</th>
+              <th className="hidden px-2 py-3 text-center sm:table-cell">L</th>
+              <th className="hidden px-2 py-3 text-center sm:table-cell">GF</th>
+              <th className="hidden px-2 py-3 text-center sm:table-cell">GA</th>
+              <th className="w-11 px-1 py-3 text-center sm:w-auto sm:px-2">GD</th>
+              <th className="w-12 px-1 py-3 text-center text-pitch-400 sm:w-auto sm:px-2">Pts</th>
             </tr>
           </thead>
           <tbody>
@@ -302,26 +377,33 @@ function StandingsTable({ rows, flashIds }: { rows: StandingsRow[]; flashIds: Se
               const flash = flashIds.has(r.playerId);
               return (
                 <tr key={r.playerId} className={`border-t border-white/[0.05] transition hover:bg-white/[0.035] ${zebra} ${flash ? "animate-pulseRow" : ""}`}>
-                  <td className="px-3 py-2.5">
+                  <td className="px-2 py-2.5 sm:px-3">
                     <span className={`grid h-6 w-6 place-items-center rounded-md text-xs font-bold ${top ? "bg-pitch-600 text-white" : "bg-slate-800 text-slate-300"}`}>{i + 1}</span>
                   </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <img src={initialsAvatar(r.name, r.avatar)} alt="" className="h-8 w-8 rounded-lg ring-1 ring-white/10" />
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{r.name}</span>
+                  <td className="min-w-0 px-2 py-2.5 sm:px-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <img src={initialsAvatar(r.name, r.avatar)} alt="" className="h-7 w-7 shrink-0 rounded-lg ring-1 ring-white/10 sm:h-8 sm:w-8" />
+                      <div className="flex min-w-0 items-center gap-2">
+                        <button
+                          type="button"
+                          className="truncate text-left font-semibold transition hover:text-pitch-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pitch-500/60"
+                          onClick={() => onSelectPlayer(r.playerId)}
+                          title={`View ${r.name}'s fixtures and results`}
+                        >
+                          {r.name}
+                        </button>
                         <Form form={r.form} />
                       </div>
                     </div>
                   </td>
-                  <td className="px-2 py-2.5 text-center text-slate-300">{r.mp}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-200">{r.w}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-400">{r.d}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-400">{r.l}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-300">{r.gf}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-400">{r.ga}</td>
-                  <td className="px-2 py-2.5 text-center text-slate-200">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
-                  <td className="px-2 py-2.5 text-center font-extrabold text-pitch-400">{r.pts}</td>
+                  <td className="px-1 py-2.5 text-center text-slate-300 sm:px-2">{r.mp}</td>
+                  <td className="hidden px-2 py-2.5 text-center text-slate-200 sm:table-cell">{r.w}</td>
+                  <td className="hidden px-2 py-2.5 text-center text-slate-400 sm:table-cell">{r.d}</td>
+                  <td className="hidden px-2 py-2.5 text-center text-slate-400 sm:table-cell">{r.l}</td>
+                  <td className="hidden px-2 py-2.5 text-center text-slate-300 sm:table-cell">{r.gf}</td>
+                  <td className="hidden px-2 py-2.5 text-center text-slate-400 sm:table-cell">{r.ga}</td>
+                  <td className="px-1 py-2.5 text-center text-slate-200 sm:px-2">{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
+                  <td className="px-1 py-2.5 text-center font-extrabold text-pitch-400 sm:px-2">{r.pts}</td>
                 </tr>
               );
             })}
@@ -335,7 +417,7 @@ function StandingsTable({ rows, flashIds }: { rows: StandingsRow[]; flashIds: Se
 function Form({ form }: { form: ("W"|"D"|"L")[] }) {
   if (!form.length) return null;
   return (
-    <span className="hidden sm:inline-flex gap-0.5">
+    <span className="hidden md:inline-flex gap-0.5">
       {form.map((r, i) => (
         <span key={i} className={`grid h-4 w-4 place-items-center rounded text-[10px] font-bold text-white ${r === "W" ? "bg-pitch-600" : r === "D" ? "bg-slate-500" : "bg-red-600/80"}`}>{r}</span>
       ))}
@@ -343,18 +425,113 @@ function Form({ form }: { form: ("W"|"D"|"L")[] }) {
   );
 }
 
-function FixturesSection({ completed, upcoming }: { completed: MatchData[]; upcoming: MatchData[] }) {
+function FixturesSection({
+  completed,
+  upcoming,
+  players,
+  selectedPlayerId,
+  onSelectedPlayerChange,
+}: {
+  completed: MatchData[];
+  upcoming: MatchData[];
+  players: PlayerData[];
+  selectedPlayerId: string;
+  onSelectedPlayerChange: (playerId: string) => void;
+}) {
+  const selectedPlayer = players.find((player) => player.id === selectedPlayerId);
+  const filteredCompleted = selectedPlayerId
+    ? completed.filter((match) => match.homePlayerId === selectedPlayerId || match.awayPlayerId === selectedPlayerId)
+    : completed;
+  const filteredUpcoming = selectedPlayerId
+    ? upcoming.filter((match) => match.homePlayerId === selectedPlayerId || match.awayPlayerId === selectedPlayerId)
+    : upcoming;
+
   return (
-    <section>
-      <div className="mb-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-pitch-400">Match centre</p>
-        <h2 className="mt-1 text-2xl font-black tracking-tight">Fixtures & results</h2>
+    <section id="match-centre" className="scroll-mt-24">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-pitch-400">Match centre</p>
+          <h2 className="mt-1 text-2xl font-black tracking-tight">Fixtures & results</h2>
+        </div>
+        <label className="min-w-[190px] text-xs font-semibold text-slate-400">
+          Show matches for
+          <select
+            className="input mt-1 cursor-pointer"
+            value={selectedPlayerId}
+            onChange={(event) => onSelectedPlayerChange(event.target.value)}
+          >
+            <option value="">All players</option>
+            {players.map((player) => (
+              <option key={player.id} value={player.id}>{player.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
+      {selectedPlayer && (
+        <PlayerMatchSnapshot
+          player={selectedPlayer}
+          completed={filteredCompleted}
+          remaining={filteredUpcoming.length}
+        />
+      )}
       <div className="grid gap-6 lg:grid-cols-2">
-      <FixtureList title="Played" matches={completed} />
-      <FixtureList title="Upcoming" matches={upcoming} />
+        <FixtureList title="Played" matches={filteredCompleted} />
+        <FixtureList title="Upcoming" matches={filteredUpcoming} />
       </div>
     </section>
+  );
+}
+
+function PlayerMatchSnapshot({
+  player,
+  completed,
+  remaining,
+}: {
+  player: PlayerData;
+  completed: MatchData[];
+  remaining: number;
+}) {
+  const record = useMemo(() => {
+    let wins = 0;
+    let draws = 0;
+    let losses = 0;
+    let goalsFor = 0;
+    let goalsAgainst = 0;
+
+    for (const match of completed) {
+      const isHome = match.homePlayerId === player.id;
+      const scored = isHome ? match.homeGoals ?? 0 : match.awayGoals ?? 0;
+      const conceded = isHome ? match.awayGoals ?? 0 : match.homeGoals ?? 0;
+      goalsFor += scored;
+      goalsAgainst += conceded;
+      if (scored > conceded) wins++;
+      else if (scored < conceded) losses++;
+      else draws++;
+    }
+
+    return { wins, draws, losses, goalsFor, goalsAgainst };
+  }, [completed, player.id]);
+
+  return (
+    <div className="card mb-4 flex flex-wrap items-center gap-4 border-pitch-500/20 p-4">
+      <img src={initialsAvatar(player.name, player.avatar)} alt="" className="h-11 w-11 rounded-xl ring-1 ring-white/10" />
+      <div className="mr-auto">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-pitch-400">Player view</p>
+        <p className="font-extrabold">{player.name}</p>
+      </div>
+      <SnapshotStat label="Record" value={`${record.wins}-${record.draws}-${record.losses}`} />
+      <SnapshotStat label="Goals" value={`${record.goalsFor}:${record.goalsAgainst}`} />
+      <SnapshotStat label="To play" value={String(remaining)} />
+    </div>
+  );
+}
+
+function SnapshotStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-[64px] text-center">
+      <p className="text-lg font-black tabular-nums">{value}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+    </div>
   );
 }
 

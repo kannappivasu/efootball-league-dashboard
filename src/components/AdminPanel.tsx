@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { initialsAvatar } from "@/lib/avatar";
 
@@ -116,6 +116,8 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
   const [hg, setHg] = useState("");
   const [ag, setAg] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const homeScoreRef = useRef<HTMLInputElement>(null);
+  const awayScoreRef = useRef<HTMLInputElement>(null);
 
   const matches = data.matches.filter((m) => {
     if (filter !== "all" && m.status !== filter) return false;
@@ -132,6 +134,10 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
   useEffect(() => {
     setPage(0);
   }, [filter, q]);
+
+  useEffect(() => {
+    if (editId) homeScoreRef.current?.focus();
+  }, [editId]);
 
   function startEdit(m: Match) {
     setEditId(m.id);
@@ -184,7 +190,19 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <input className="input max-w-xs" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="relative w-full max-w-xs">
+          <input className="input pr-9" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-white/[0.06] hover:text-white"
+              onClick={() => setQ("")}
+              aria-label="Clear player search"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <div className="flex gap-1 rounded-lg border border-slate-800 bg-slate-900/50 p-1">
           {(["all", "scheduled", "completed"] as const).map((f) => (
             <button key={f} onClick={() => setFilter(f)}
@@ -208,9 +226,39 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
               <div className="flex items-center gap-1">
                 {editing ? (
                   <>
-                    <input className="input !w-14 !px-2 text-center text-base font-bold" type="number" min={0} inputMode="numeric" value={hg} onChange={(e) => setHg(e.target.value)} />
+                    <input
+                      ref={homeScoreRef}
+                      aria-label={`${m.homePlayer.name} score`}
+                      className="input !w-14 !px-2 text-center text-base font-bold"
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={hg}
+                      onChange={(e) => setHg(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          awayScoreRef.current?.focus();
+                        }
+                      }}
+                    />
                     <span className="font-bold">:</span>
-                    <input className="input !w-14 !px-2 text-center text-base font-bold" type="number" min={0} inputMode="numeric" value={ag} onChange={(e) => setAg(e.target.value)} />
+                    <input
+                      ref={awayScoreRef}
+                      aria-label={`${m.awayPlayer.name} score`}
+                      className="input !w-14 !px-2 text-center text-base font-bold"
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={ag}
+                      onChange={(e) => setAg(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void save(m);
+                        }
+                      }}
+                    />
                   </>
                 ) : (
                   <span className={`grid min-w-[3rem] place-items-center rounded-lg px-2 py-1 text-base font-extrabold tabular-nums ${played ? "bg-slate-950" : "border border-slate-700 text-slate-500"}`}>
@@ -252,6 +300,9 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
           </button>
         </div>
       )}
+      <p className="text-center text-[11px] text-slate-500">
+        Tip: while editing, Enter moves to the away score; Enter again saves.
+      </p>
     </div>
   );
 }
