@@ -11,23 +11,80 @@ html, body { height: 100%; }
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
   background-image:
-    radial-gradient(1200px 600px at 80% -10%, rgba(34,197,94,0.10), transparent 60%),
-    radial-gradient(900px 500px at -10% 110%, rgba(20,83,45,0.18), transparent 60%);
+    linear-gradient(rgba(2,6,23,.78), rgba(2,6,23,.94)),
+    radial-gradient(1200px 600px at 80% -10%, rgba(34,197,94,0.24), transparent 60%),
+    radial-gradient(900px 500px at -10% 110%, rgba(20,83,45,0.28), transparent 60%);
+  background-attachment: fixed;
 }
 
 @layer components {
   .card {
-    @apply rounded-2xl border border-slate-800 bg-slate-900/70 backdrop-blur shadow-lg;
+    @apply rounded-2xl border border-white/[0.08] bg-slate-900/70 backdrop-blur-xl shadow-2xl shadow-black/10;
+  }
+  .hero-card {
+    @apply relative overflow-hidden rounded-3xl border border-pitch-500/25 bg-slate-900/80 shadow-2xl shadow-pitch-950/50;
+    box-shadow: 0 28px 80px -32px rgba(34,197,94,.34), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .hero-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-30;
+    background-image:
+      linear-gradient(rgba(74,222,128,.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(74,222,128,.12) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(to right, transparent, black 35%, black);
+  }
+  .hero-card::after {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 bottom-0 h-px;
+    background: linear-gradient(90deg, transparent, rgba(74,222,128,.7), transparent);
+  }
+  .hero-orb {
+    @apply pointer-events-none absolute rounded-full blur-3xl;
+  }
+  .hero-orb-one {
+    @apply -right-16 -top-20 h-64 w-64 bg-pitch-500/15;
+  }
+  .hero-orb-two {
+    @apply -bottom-24 left-1/3 h-52 w-52 bg-emerald-300/[0.07];
+  }
+  .text-gradient {
+    @apply bg-gradient-to-r from-pitch-300 via-emerald-400 to-lime-300 bg-clip-text text-transparent;
+  }
+  .feature-pill {
+    @apply rounded-lg border border-white/[0.07] bg-white/[0.035] px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-pitch-500/25 bg-pitch-500/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-pitch-300;
+  }
+  .stat-card {
+    @apply card relative overflow-hidden p-4 transition duration-200 hover:-translate-y-1 hover:border-pitch-500/30;
+  }
+  .stat-card::after {
+    content: "";
+    @apply absolute inset-x-4 bottom-0 h-px scale-x-0 bg-gradient-to-r from-transparent via-pitch-400/70 to-transparent transition-transform duration-300;
+  }
+  .stat-card:hover::after {
+    @apply scale-x-100;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-50;
   }
-  .btn-primary { @apply btn bg-pitch-600 hover:bg-pitch-500 text-white; }
-  .btn-ghost { @apply btn border border-slate-700 hover:bg-slate-800 text-slate-200; }
+  .btn-primary { @apply btn bg-pitch-600 text-white shadow-lg shadow-pitch-950/40 hover:bg-pitch-500; }
+  .btn-ghost { @apply btn border border-white/10 bg-white/[0.03] text-slate-200 hover:border-white/20 hover:bg-white/[0.07]; }
   .input {
-    @apply w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-pitch-500 focus:ring-1 focus:ring-pitch-500;
+    @apply w-full rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm outline-none transition placeholder:text-slate-600 focus:border-pitch-500 focus:ring-2 focus:ring-pitch-500/20;
   }
   .skeleton {
     @apply animate-pulse rounded-md bg-slate-800/70;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

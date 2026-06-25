@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -43,14 +44,30 @@ interface MediaItem {
   score: number;
 }
 
-async function fetchWithRetry(url: string, retries = 4): Promise<any | null> {
+interface WikipediaMediaItem {
+  type?: string;
+  title?: string;
+  srcset?: Array<{ src?: string }>;
+  caption?: { text?: string };
+}
+
+interface WikipediaMediaResponse {
+  items?: WikipediaMediaItem[];
+}
+
+interface WikipediaSummaryResponse {
+  thumbnail?: { source?: string };
+  originalimage?: { source?: string };
+}
+
+async function fetchWithRetry<T>(url: string, retries = 4): Promise<T | null> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const res = await fetch(url, { headers: { "User-Agent": "efootball-league-dashboard/1.0 (seed script)" } });
       if (res.status === 429 || res.status >= 500) { await sleep(700 * attempt); continue; }
       if (res.status === 404) return null;
       if (!res.ok) { await sleep(400 * attempt); continue; }
-      return await res.json();
+      return await res.json() as T;
     } catch { await sleep(400 * attempt); }
   }
   return null;
@@ -58,17 +75,18 @@ async function fetchWithRetry(url: string, retries = 4): Promise<any | null> {
 
 async function fetchMedia(name: string): Promise<MediaItem[]> {
   const url = `https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(name)}`;
-  const json = await fetchWithRetry(url);
+  const json = await fetchWithRetry<WikipediaMediaResponse>(url);
   if (!json) return [];
   return (json.items ?? [])
-    .filter((i: any) => i.type === "image" && Array.isArray(i.srcset) && i.srcset.length)
-    .map((i: any) => {
-      const src = (i.srcset[i.srcset.length - 1]?.src ?? i.srcset[0].src) as string | undefined;
+    .filter((item) => item.type === "image" && Array.isArray(item.srcset) && item.srcset.length)
+    .map((item) => {
+      const srcset = item.srcset!;
+      const src = srcset[srcset.length - 1]?.src ?? srcset[0]?.src;
       const thumb = src ? (src.startsWith("//") ? `https:${src}` : src) : null;
       return {
-        title: (i.title ?? "") as string,
+        title: item.title ?? "",
         thumb,
-        caption: (i.caption?.text ?? "") as string,
+        caption: item.caption?.text ?? "",
         score: 0,
       };
     })
@@ -78,7 +96,7 @@ async function fetchMedia(name: string): Promise<MediaItem[]> {
 // Fallback: REST summary thumbnail (the article's lead image).
 async function fetchSummaryThumb(name: string): Promise<string | null> {
   const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`;
-  const json = await fetchWithRetry(url);
+  const json = await fetchWithRetry<WikipediaSummaryResponse>(url);
   return json?.thumbnail?.source ?? json?.originalimage?.source ?? null;
 }
 

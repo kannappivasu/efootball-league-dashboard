@@ -17,4 +17,9 @@
 # misc
 .DS_Store
 *.pem
-next-env.d.tsdevlog.txt
+*.tsbuildinfo
+next-env.d.ts
+devlog.txt
+.codex-dev.*.log
+
+.vercel

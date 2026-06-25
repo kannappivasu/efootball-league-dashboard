@@ -29,34 +29,47 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
   if (body.delete === true) {
     // reset to scheduled, no scores
-    const m = await prisma.match.update({ where: { id }, data: { homeGoals: null, awayGoals: null, status: "scheduled", playedAt: null } });
-    await prisma.auditLog.create({ data: { actor: guard.email!, action: "match.reset", detail: `Reset ${existing.homePlayer.name} vs ${existing.awayPlayer.name}` } });
+    const m = await prisma.$transaction(async (tx) => {
+      const match = await tx.match.update({
+        where: { id },
+        data: { homeGoals: null, awayGoals: null, status: "scheduled", playedAt: null },
+      });
+      await tx.auditLog.create({
+        data: {
+          actor: guard.email!,
+          action: "match.reset",
+          detail: `Reset ${existing.homePlayer.name} vs ${existing.awayPlayer.name}`,
+        },
+      });
+      return match;
+    });
     return NextResponse.json({ ok: true, match: m });
   }
 
-  const homeGoals = body.homeGoals ?? existing.homeGoals;
-  const awayGoals = body.awayGoals ?? existing.awayGoals;
+  const homeGoals = body.homeGoals;
+  const awayGoals = body.awayGoals;
   if (!validScore(homeGoals) || !validScore(awayGoals)) {
-    return NextResponse.json({ error: "Scores must be non-negative integers" }, { status: 400 });
+    return NextResponse.json({ error: "Both scores must be non-negative integers" }, { status: 400 });
   }
 
-  const status = body.status === "scheduled" ? "scheduled" : "completed";
-  const m = await prisma.match.update({
-    where: { id },
-    data: {
-      homeGoals,
-      awayGoals,
-      status,
-      playedAt: status === "completed" ? (existing.playedAt ?? new Date()) : null,
-    },
-  });
-
-  await prisma.auditLog.create({
-    data: {
-      actor: guard.email!,
-      action: status === "completed" ? "match.complete" : "match.update",
-      detail: `${existing.homePlayer.name} ${homeGoals}:${awayGoals} ${existing.awayPlayer.name}`,
-    },
+  const m = await prisma.$transaction(async (tx) => {
+    const match = await tx.match.update({
+      where: { id },
+      data: {
+        homeGoals,
+        awayGoals,
+        status: "completed",
+        playedAt: existing.playedAt ?? new Date(),
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        actor: guard.email!,
+        action: existing.status === "completed" ? "match.update" : "match.complete",
+        detail: `${existing.homePlayer.name} ${homeGoals}:${awayGoals} ${existing.awayPlayer.name}`,
+      },
+    });
+    return match;
   });
   return NextResponse.json({ ok: true, match: m });
 }

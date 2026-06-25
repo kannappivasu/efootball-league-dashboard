@@ -5,8 +5,11 @@ import { getSession } from "@/lib/session";
 
 export async function POST(req: Request) {
   const { email, password } = await req.json().catch(() => ({}) as { email?: string; password?: string });
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email.trim() || !password) {
     return NextResponse.json({ error: "Email and password required" }, { status: 400 });
+  }
+  if (email.length > 254 || password.length > 200) {
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
   const admin = await prisma.admin.findUnique({ where: { email: email.toLowerCase().trim() } });
@@ -21,8 +24,17 @@ export async function POST(req: Request) {
   session.isLoggedIn = true;
   await session.save();
 
-  await prisma.auditLog.create({ data: { actor: admin.email, action: "login", detail: "Admin logged in" } });
-  return NextResponse.json({ ok: true, email: admin.email, role: admin.role });
+  // Authentication must not fail if optional audit storage is temporarily
+  // unavailable (for example, a read-only bundled SQLite database).
+  try {
+    await prisma.auditLog.create({ data: { actor: admin.email, action: "login", detail: "Admin logged in" } });
+  } catch (error) {
+    console.error("Failed to write login audit log", error);
+  }
+  return NextResponse.json(
+    { ok: true, email: admin.email, role: admin.role },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
 
 export async function DELETE() {

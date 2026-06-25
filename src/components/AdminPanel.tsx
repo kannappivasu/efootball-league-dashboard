@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { initialsAvatar } from "@/lib/avatar";
 
@@ -14,8 +14,8 @@ type Match = {
   status: string;
   leg: string;
   playedAt: string | null;
-  homePlayer: { id: string; name: string };
-  awayPlayer: { id: string; name: string };
+  homePlayer: { id: string; name: string; avatar: string | null };
+  awayPlayer: { id: string; name: string; avatar: string | null };
 };
 type AuditLog = { id: string; actor: string; action: string; detail: string | null; createdAt: string };
 type DataShape = { players: Player[]; matches: Match[]; count: { players: number; matches: number } };
@@ -25,14 +25,21 @@ export default function AdminPanel({ email, role }: { email: string; role: strin
   const [tab, setTab] = useState<"scores" | "players" | "audit">("scores");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  async function load() {
-    const res = await fetch(`/api/data?t=${Date.now()}`, { cache: "no-store" });
-    const json: any = await res.json();
-    setData({ players: json.players, matches: json.matches, count: json.count });
-  }
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/data?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Could not load league data (HTTP ${res.status})`);
+      const json = await res.json() as DataShape;
+      setData({ players: json.players, matches: json.matches, count: json.count });
+      setLoadError(null);
+    } catch (error: unknown) {
+      setLoadError(error instanceof Error ? error.message : "Could not load league data");
+    }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, [load]);
 
   function flash(msg: string) {
     setToast(msg);
@@ -41,8 +48,8 @@ export default function AdminPanel({ email, role }: { email: string; role: strin
 
   async function apiOk(res: Response, okMsg: string) {
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(j.error ?? `HTTP ${res.status}`);
+      const json = await res.json().catch(() => ({})) as { error?: string };
+      throw new Error(json.error ?? `HTTP ${res.status}`);
     }
     flash(okMsg);
     await load();
@@ -59,6 +66,14 @@ export default function AdminPanel({ email, role }: { email: string; role: strin
     location.href = "/admin/login";
   }
 
+  if (loadError && !data) {
+    return (
+      <div className="card mx-auto max-w-xl p-6 text-center text-sm text-red-300">
+        <p>{loadError}</p>
+        <button className="btn-ghost mt-4" onClick={() => void load()}>Retry</button>
+      </div>
+    );
+  }
   if (!data) return <div className="mx-auto max-w-3xl py-10 text-sm text-slate-400">Loading admin…</div>;
 
   return (
@@ -93,12 +108,16 @@ export default function AdminPanel({ email, role }: { email: string; role: strin
 }
 
 function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: Response, ok: string) => Promise<void>; patchMatch: (id: string, patch: Partial<Match>) => void }) {
+  const PAGE_SIZE = 20;
   const [filter, setFilter] = useState<"all" | "scheduled" | "completed">("all");
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(0);
   const [editId, setEditId] = useState<string | null>(null);
   const [hg, setHg] = useState("");
   const [ag, setAg] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
+  const homeScoreRef = useRef<HTMLInputElement>(null);
+  const awayScoreRef = useRef<HTMLInputElement>(null);
 
   const matches = data.matches.filter((m) => {
     if (filter !== "all" && m.status !== filter) return false;
@@ -108,6 +127,17 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
     }
     return true;
   });
+  const totalPages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const visibleMatches = matches.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filter, q]);
+
+  useEffect(() => {
+    if (editId) homeScoreRef.current?.focus();
+  }, [editId]);
 
   function startEdit(m: Match) {
     setEditId(m.id);
@@ -116,23 +146,26 @@ function ScoresTab({ data, apiOk, patchMatch }: { data: DataShape; apiOk: (res: 
   }
 
   async function save(m: Match) {
-    const h = hg === "" ? null : parseInt(hg, 10);
-    const a = ag === "" ? null : parseInt(ag, 10);
-    if (h != null && (isNaN(h) || h < 0)) return alert("Home goals must be a non-negative integer");
-    if (a != null && (isNaN(a) || a < 0)) return alert("Away goals must be a non-negative integer");
-setSaving(m.id);
+    if (!/^\d+$/.test(hg) || !/^\d+$/.test(ag)) {
+      return alert("Enter a non-negative whole number for both scores");
+    }
+    const h = Number(hg);
+    const a = Number(ag);
+    if (!Number.isSafeInteger(h) || !Number.isSafeInteger(a)) {
+      return alert("Scores are too large");
+    }
+    setSaving(m.id);
     try {
-      const status = h != null && a != null ? "completed" : "scheduled";
       const res = await fetch(`/api/matches/${m.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ homeGoals: h, awayGoals: a, status }),
+        body: JSON.stringify({ homeGoals: h, awayGoals: a }),
       });
-      await apiOk(res, `Saved ${m.homePlayer.name} ${h ?? "—"}:${a ?? "—"} ${m.awayPlayer.name}`);
-      patchMatch(m.id, { homeGoals: h, awayGoals: a, status, playedAt: status === "completed" ? new Date().toISOString() : null });
+      await apiOk(res, `Saved ${m.homePlayer.name} ${h}:${a} ${m.awayPlayer.name}`);
+      patchMatch(m.id, { homeGoals: h, awayGoals: a, status: "completed", playedAt: m.playedAt ?? new Date().toISOString() });
       setEditId(null);
-    } catch (e: any) {
-      alert(e.message);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Could not save score");
     } finally { setSaving(null); }
   }
 
@@ -149,13 +182,27 @@ setSaving(m.id);
       // Optimistically flip this match back to scheduled in the local UI immediately.
       patchMatch(m.id, { homeGoals: null, awayGoals: null, status: "scheduled", playedAt: null });
       if (editId === m.id) setEditId(null);
-    } catch (e: any) { alert(e.message); } finally { setSaving(null); }
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Could not reset score");
+    } finally { setSaving(null); }
   }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <input className="input max-w-xs" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="relative w-full max-w-xs">
+          <input className="input pr-9" placeholder="Search players…" value={q} onChange={(e) => setQ(e.target.value)} />
+          {q && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 text-xs text-slate-400 hover:bg-white/[0.06] hover:text-white"
+              onClick={() => setQ("")}
+              aria-label="Clear player search"
+            >
+              ×
+            </button>
+          )}
+        </div>
         <div className="flex gap-1 rounded-lg border border-slate-800 bg-slate-900/50 p-1">
           {(["all", "scheduled", "completed"] as const).map((f) => (
             <button key={f} onClick={() => setFilter(f)}
@@ -166,22 +213,52 @@ setSaving(m.id);
       </div>
 
       <div className="card divide-y divide-slate-800/70">
-        {matches.map((m) => {
+        {visibleMatches.map((m) => {
           const editing = editId === m.id;
           const played = m.status === "completed";
           return (
             <div key={m.id} className="flex flex-wrap items-center gap-3 p-3">
               <div className="flex flex-1 items-center justify-end gap-2 text-right">
                 <span className={`truncate ${played && (m.homeGoals ?? 0) > (m.awayGoals ?? 0) ? "font-bold" : "text-slate-300"}`}>{m.homePlayer.name}</span>
-                <img src={initialsAvatar(m.homePlayer.name, null)} alt="" className="h-6 w-6 rounded-md" />
+                <img src={initialsAvatar(m.homePlayer.name, m.homePlayer.avatar)} alt="" className="h-6 w-6 rounded-md" />
                 <span className="hidden rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-300 sm:inline">H</span>
               </div>
               <div className="flex items-center gap-1">
                 {editing ? (
                   <>
-                    <input className="input !w-14 !px-2 text-center text-base font-bold" type="number" min={0} inputMode="numeric" value={hg} onChange={(e) => setHg(e.target.value)} />
+                    <input
+                      ref={homeScoreRef}
+                      aria-label={`${m.homePlayer.name} score`}
+                      className="input !w-14 !px-2 text-center text-base font-bold"
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={hg}
+                      onChange={(e) => setHg(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          awayScoreRef.current?.focus();
+                        }
+                      }}
+                    />
                     <span className="font-bold">:</span>
-                    <input className="input !w-14 !px-2 text-center text-base font-bold" type="number" min={0} inputMode="numeric" value={ag} onChange={(e) => setAg(e.target.value)} />
+                    <input
+                      ref={awayScoreRef}
+                      aria-label={`${m.awayPlayer.name} score`}
+                      className="input !w-14 !px-2 text-center text-base font-bold"
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={ag}
+                      onChange={(e) => setAg(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void save(m);
+                        }
+                      }}
+                    />
                   </>
                 ) : (
                   <span className={`grid min-w-[3rem] place-items-center rounded-lg px-2 py-1 text-base font-extrabold tabular-nums ${played ? "bg-slate-950" : "border border-slate-700 text-slate-500"}`}>
@@ -191,7 +268,7 @@ setSaving(m.id);
               </div>
               <div className="flex flex-1 items-center gap-2">
                 <span className="hidden rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-slate-300 sm:inline">A</span>
-                <img src={initialsAvatar(m.awayPlayer.name, null)} alt="" className="h-6 w-6 rounded-md" />
+                <img src={initialsAvatar(m.awayPlayer.name, m.awayPlayer.avatar)} alt="" className="h-6 w-6 rounded-md" />
                 <span className={`truncate ${played && (m.awayGoals ?? 0) > (m.homeGoals ?? 0) ? "font-bold" : "text-slate-300"}`}>{m.awayPlayer.name}</span>
               </div>
               <div className="ml-auto flex gap-2">
@@ -212,6 +289,20 @@ setSaving(m.id);
         })}
         {matches.length === 0 && <div className="p-8 text-center text-sm text-slate-500">No matches match the filter.</div>}
       </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between gap-3 text-xs text-slate-400">
+          <button className="btn-ghost !px-3 !py-1.5 text-xs" disabled={safePage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+            Previous
+          </button>
+          <span>Page {safePage + 1} of {totalPages}</span>
+          <button className="btn-ghost !px-3 !py-1.5 text-xs" disabled={safePage >= totalPages - 1} onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}>
+            Next
+          </button>
+        </div>
+      )}
+      <p className="text-center text-[11px] text-slate-500">
+        Tip: while editing, Enter moves to the away score; Enter again saves.
+      </p>
     </div>
   );
 }
@@ -235,7 +326,9 @@ function PlayersTab({ data, apiOk }: { data: DataShape; apiOk: (res: Response, o
       });
       await apiOk(res, `Added ${name.trim()} (+fixtures auto-generated)`);
       setName(""); setAvatar("");
-    } catch (e: any) { alert(e.message); } finally { setAdding(false); }
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Could not add player");
+    } finally { setAdding(false); }
   }
 
   function startEdit(p: Player) {
@@ -254,7 +347,9 @@ function PlayersTab({ data, apiOk }: { data: DataShape; apiOk: (res: Response, o
       });
       await apiOk(res, `Updated ${ed.name.trim()}`);
       setEditing((s) => { const c = { ...s }; delete c[p.id]; return c; });
-    } catch (e: any) { alert(e.message); } finally { setSaving(null); }
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Could not update player");
+    } finally { setSaving(null); }
   }
 
   async function remove(p: Player) {
@@ -263,7 +358,9 @@ function PlayersTab({ data, apiOk }: { data: DataShape; apiOk: (res: Response, o
     try {
       const res = await fetch(`/api/players/${p.id}`, { method: "DELETE" });
       await apiOk(res, `Deleted ${p.name}`);
-    } catch (e: any) { alert(e.message); } finally { setSaving(null); }
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "Could not delete player");
+    } finally { setSaving(null); }
   }
 
   return (
@@ -325,7 +422,9 @@ function AuditTab() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const j = await res.json();
         setLogs(j.logs);
-      } catch (e: any) { setErr(e.message); }
+      } catch (error: unknown) {
+        setErr(error instanceof Error ? error.message : "Could not load audit log");
+      }
     })();
   }, []);
   if (err) return <div className="card p-4 text-sm text-red-300">⚠️ {err}</div>;
