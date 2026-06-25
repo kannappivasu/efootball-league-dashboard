@@ -116,7 +116,7 @@ export default function Dashboard() {
     <div className="space-y-7">
       <p
         aria-hidden="true"
-        className="select-none text-center text-[4px] leading-none tracking-[0.08em] text-slate-950/30"
+        className="select-none text-center text-[8px] leading-none tracking-[0.08em] text-slate-950/30"
       >
         sam is a little vanam
       </p>
